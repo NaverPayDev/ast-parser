@@ -1,36 +1,35 @@
 {
-    "name": "ts-monorepo-template",
+    "name": "ast-parser",
+    "version": "0.0.1",
+    "description": "javascript ast parser for naverpay",
     "author": "@NaverPayDev/frontend",
     "repository": {
         "type": "git",
-        "url": "https://github.com/NaverPayDev/ts-monorepo-template.git"
+        "url": "https://github.com/NaverPayDev/ast-parser.git"
     },
-    "description": "ts-monorepo-template",
-    "version": "0.0.0",
     "scripts": {
-        "start": "turbo run start",
-        "build": "turbo run build",
-        "lint": "turbo run lint",
-        "lint:fix": "turbo run lint:fix",
-        "prettier": "turbo run prettier",
-        "prettier:fix": "turbo run prettier:fix",
-        "clean": "turbo run clean && rm -rf ./node_modules && pnpm i",
+        "clean": "rm -rf dist",
+        "build": "pnpm run clean && tsc -p tsconfig.json",
+        "lint": "eslint '**/*.{js,jsx,ts,tsx}'",
+        "lint:fix": "eslint '**/*.{js,jsx,ts,tsx}' --fix",
+        "prettier": "prettier --check '**/*.{ts,mts,cts,tsx,js,mjs,cjs,jsx,json}'",
+        "prettier:fix": "prettier --write '**/*.{ts,mts,cts,tsx,js,mjs,cjs,jsx,json}'",
         "release:canary": "pnpm run build && changeset publish --no-git-tag",
         "release": "pnpm run build && changeset publish"
     },
     "lint-staged": {
-        "**/*.{json,yaml,md,ts,tsx,js,jsx}": "prettier --check",
+        "**/*.{json,yaml,ts,tsx,js,jsx}": "prettier --check",
         "**/*.{ts,tsx,js,jsx}": "eslint"
     },
     "devDependencies": {
-        "@size-limit/preset-big-lib": "^11.0.2",
         "@changesets/cli": "^2.26.2",
+        "@naverpay/eslint-config": "^0.1.0",
+        "@naverpay/prettier-config": "^0.0.2",
         "husky": "^8.0.3",
         "lint-staged": "^15.0.1",
-        "size-limit": "^11.0.2",
-        "turbo": "^1.10.16",
-        "typescript": "^5.2.2",
-        "glob": "^9.3.4"
+        "typescript": "^5.4.4"
     },
-    "packageManager": "pnpm@8.14.3"
+    "dependencies": {
+        "@typescript-eslint/typescript-estree": "^7.5.0"
+    }
 }
