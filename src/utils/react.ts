@@ -1,4 +1,9 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import {AST_NODE_TYPES} from '@typescript-eslint/typescript-estree'
+
+import {PROPS_IDENTIFIER_NAME} from '../constants'
+import {ComponentAST, PossibleObjectValue} from '../types/ast'
+
 import type {
     FunctionDeclaration,
     VariableDeclaration,
@@ -12,9 +17,6 @@ import type {
     Identifier,
     ObjectExpression,
 } from '@typescript-eslint/types/dist/generated/ast-spec'
-
-import {ComponentAST, PossibleObjectValue} from '../types/ast'
-import {PROPS_IDENTIFIER_NAME} from '../constants'
 
 type ComponentTypeNode = FunctionDeclaration | VariableDeclaration
 
@@ -156,6 +158,7 @@ export const parsePropsDeclaration = (
          * value.type = Identifier | AssignmentPattern | CallExpression
          */
         const propsEntries: [string, any][] = properties
+            // eslint-disable-next-line array-callback-return
             .map(({key, value}) => {
                 const {name: propName} = key as Identifier
                 if (value.type === AST_NODE_TYPES.Identifier) {
