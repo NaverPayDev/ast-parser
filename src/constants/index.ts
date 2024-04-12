@@ -1,1 +1,1 @@
-export const PROPS_IDENTIFIER_NAME = 'props' as const
+export const PROPS_IDENTIFIER_NAME = 'props'
