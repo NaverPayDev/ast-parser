@@ -1,5 +1,5 @@
 {
-    "name": "ast-parser",
+    "name": "@naverpay/ast-parser",
     "version": "0.0.1",
     "description": "javascript ast parser for naverpay",
     "author": "@NaverPayDev/frontend",
