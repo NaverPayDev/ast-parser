@@ -22,4 +22,5 @@ jobs:
             - run: npm i -g pnpm
             - run: node -v && pnpm -v
             - run: pnpm install --frozen-lockfile
+            - run: pnpm test
             - run: pnpm run build
