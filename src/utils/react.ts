@@ -7,6 +7,7 @@ import {ComponentAST, PossibleObjectValue} from '../types/ast'
 import type {
     FunctionDeclaration,
     VariableDeclaration,
+    ExportDefaultDeclaration,
     FunctionExpression,
     ArrowFunctionExpression,
     JSXElement,
@@ -18,12 +19,30 @@ import type {
     ObjectExpression,
 } from '@typescript-eslint/types/dist/generated/ast-spec'
 
-type ComponentTypeNode = FunctionDeclaration | VariableDeclaration
+type ComponentTypeNode = FunctionDeclaration | VariableDeclaration | ExportDefaultDeclaration
 
 export function getReactComponentDeclaration(node: ComponentAST) {
     const [componentDeclaration] = node.body.filter((children) =>
-        Object.values([AST_NODE_TYPES.FunctionDeclaration, AST_NODE_TYPES.VariableDeclaration]).includes(children.type),
+        Object.values([
+            AST_NODE_TYPES.FunctionDeclaration,
+            AST_NODE_TYPES.VariableDeclaration,
+            AST_NODE_TYPES.ExportDefaultDeclaration,
+        ]).includes(children.type),
     ) as unknown as ComponentTypeNode[]
+
+    if (componentDeclaration.type === AST_NODE_TYPES.ExportDefaultDeclaration) {
+        if (componentDeclaration.declaration.type === AST_NODE_TYPES.FunctionDeclaration) {
+            return componentDeclaration.declaration
+        }
+        // export default memo(...)
+        else if (componentDeclaration.declaration.type === AST_NODE_TYPES.CallExpression) {
+            const argument = componentDeclaration.declaration.arguments[0]
+
+            if ([AST_NODE_TYPES.FunctionExpression, AST_NODE_TYPES.ArrowFunctionExpression].includes(argument.type)) {
+                return argument as FunctionExpression | ArrowFunctionExpression
+            }
+        }
+    }
 
     return componentDeclaration
 }
@@ -95,33 +114,44 @@ export function getJSXElement(node: ComponentAST, targetIdentifierName: string) 
      */
     const componentDeclaration = getReactComponentDeclaration(node)
 
-    if (componentDeclaration.type === AST_NODE_TYPES.FunctionDeclaration) {
-        return parseFunctionExpressionJSXElement(componentDeclaration, targetIdentifierName)
-    } else if (componentDeclaration.type === AST_NODE_TYPES.VariableDeclaration) {
-        const variableDeclarator = componentDeclaration.declarations[0].init
+    switch (componentDeclaration.type) {
+        case AST_NODE_TYPES.FunctionDeclaration:
+            return parseFunctionExpressionJSXElement(componentDeclaration, targetIdentifierName)
+        case AST_NODE_TYPES.VariableDeclaration:
+            {
+                const variableDeclarator = componentDeclaration.declarations[0].init
 
-        if (!variableDeclarator) {
-            return
-        }
+                if (!variableDeclarator) {
+                    return
+                }
 
-        // memo() 된 코드
-        if (variableDeclarator.type === AST_NODE_TYPES.CallExpression) {
-            const callExpressionArgument = variableDeclarator.arguments.find(
-                ({type}) =>
-                    type === AST_NODE_TYPES.ArrowFunctionExpression || type === AST_NODE_TYPES.FunctionExpression,
-            )
-            if (callExpressionArgument) {
-                if (callExpressionArgument.type === AST_NODE_TYPES.ArrowFunctionExpression) {
-                    return parseArrowFunctionJSXElement(callExpressionArgument, targetIdentifierName)
-                } else if (callExpressionArgument.type === AST_NODE_TYPES.FunctionExpression) {
-                    return parseFunctionExpressionJSXElement(callExpressionArgument, targetIdentifierName)
+                // memo() 된 코드
+                if (variableDeclarator.type === AST_NODE_TYPES.CallExpression) {
+                    const callExpressionArgument = variableDeclarator.arguments.find(
+                        ({type}) =>
+                            type === AST_NODE_TYPES.ArrowFunctionExpression ||
+                            type === AST_NODE_TYPES.FunctionExpression,
+                    )
+                    if (callExpressionArgument) {
+                        if (callExpressionArgument.type === AST_NODE_TYPES.ArrowFunctionExpression) {
+                            return parseArrowFunctionJSXElement(callExpressionArgument, targetIdentifierName)
+                        } else if (callExpressionArgument.type === AST_NODE_TYPES.FunctionExpression) {
+                            return parseFunctionExpressionJSXElement(callExpressionArgument, targetIdentifierName)
+                        }
+                    }
+                }
+                // memo() 되지 않은 코드
+                else if (variableDeclarator.type === AST_NODE_TYPES.ArrowFunctionExpression) {
+                    return parseArrowFunctionJSXElement(variableDeclarator, targetIdentifierName)
                 }
             }
-        }
-        // memo() 되지 않은 코드
-        else if (variableDeclarator.type === AST_NODE_TYPES.ArrowFunctionExpression) {
-            return parseArrowFunctionJSXElement(variableDeclarator, targetIdentifierName)
-        }
+            break
+        case AST_NODE_TYPES.ArrowFunctionExpression:
+            return parseArrowFunctionJSXElement(componentDeclaration, targetIdentifierName)
+        case AST_NODE_TYPES.FunctionExpression:
+            return parseFunctionExpressionJSXElement(componentDeclaration, targetIdentifierName)
+        default:
+            return null
     }
 }
 
@@ -188,11 +218,10 @@ export const parsePropsDeclaration = (
             .filter((v): v is [string, any] => !!v)
 
         return Object.fromEntries(propsEntries)
-    }
-    // props: SVGStyleProps
-    else if (propsDeclaration.type === AST_NODE_TYPES.Identifier && propsDeclaration.name === PROPS_IDENTIFIER_NAME) {
+    } else if (propsDeclaration.type === AST_NODE_TYPES.Identifier && propsDeclaration.name === PROPS_IDENTIFIER_NAME) {
         /**
          * @description 본문에서 properties 가져와서 구조분해로 재구성
+         * @example function Component(props: SVGStyleProps) {...} => 'props'
          */
         return propsDeclaration.name
     }
@@ -203,34 +232,46 @@ export const parsePropsDeclaration = (
 export const extractComponentProps = (node: ComponentAST) => {
     const componentDeclaration = getReactComponentDeclaration(node)
 
-    // const Icon = () => {} or const Icon = memo(() => {})
-    if (componentDeclaration.type === AST_NODE_TYPES.VariableDeclaration) {
-        const variableDeclarator = componentDeclaration.declarations[0].init
+    switch (componentDeclaration.type) {
+        case AST_NODE_TYPES.FunctionDeclaration: {
+            const propsDeclaration = componentDeclaration.params[0]
 
-        if (!variableDeclarator) {
+            return parsePropsDeclaration(propsDeclaration)
+        }
+        case AST_NODE_TYPES.VariableDeclaration:
+            {
+                const variableDeclarator = componentDeclaration.declarations[0].init
+
+                if (!variableDeclarator) {
+                    return null
+                }
+
+                // memo() 된 코드
+                if (variableDeclarator.type === AST_NODE_TYPES.CallExpression) {
+                    const argument = variableDeclarator.arguments[0] as ArrowFunctionExpression
+                    const propsDeclaration = argument.params[0]
+
+                    return parsePropsDeclaration(propsDeclaration)
+                }
+                // memo() 되지 않은 코드
+                else if (variableDeclarator.type === AST_NODE_TYPES.ArrowFunctionExpression) {
+                    const propsDeclaration = variableDeclarator.params[0]
+
+                    return parsePropsDeclaration(propsDeclaration)
+                }
+            }
+            break
+        case AST_NODE_TYPES.ArrowFunctionExpression: {
+            const propsDeclaration = componentDeclaration.params[0]
+
+            return parsePropsDeclaration(propsDeclaration)
+        }
+        case AST_NODE_TYPES.FunctionExpression: {
+            const propsDeclaration = componentDeclaration.params[0]
+
+            return parsePropsDeclaration(propsDeclaration)
+        }
+        default:
             return null
-        }
-
-        // memo() 된 코드
-        if (variableDeclarator.type === AST_NODE_TYPES.CallExpression) {
-            const argument = variableDeclarator.arguments[0] as ArrowFunctionExpression
-            const propsDeclaration = argument.params[0]
-
-            return parsePropsDeclaration(propsDeclaration)
-        }
-        // memo() 되지 않은 코드
-        else if (variableDeclarator.type === AST_NODE_TYPES.ArrowFunctionExpression) {
-            const propsDeclaration = variableDeclarator.params[0]
-
-            return parsePropsDeclaration(propsDeclaration)
-        }
     }
-    // function(){}
-    else if (componentDeclaration.type === AST_NODE_TYPES.FunctionDeclaration) {
-        const propsDeclaration = componentDeclaration.params[0]
-
-        return parsePropsDeclaration(propsDeclaration)
-    }
-
-    return null
 }
